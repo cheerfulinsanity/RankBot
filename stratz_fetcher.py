@@ -8,11 +8,17 @@ HEADERS = {
     "user-agent": "Mozilla/5.0",
 }
 
-QUERY = """
-query getRecentMatches($steamId: Long!) {
+UNRANKED_MODES = {
+    "ALL_PICK", "TURBO", "ABILITY_DRAFT", "ALL_RANDOM", "SINGLE_DRAFT",
+    "LEAST_PLAYED", "ALL_RANDOM_DEATH_MATCH", "MID_ONLY", "CUSTOM"
+}
+
+BASE_QUERY = """
+query getRecentMatches($steamId: Long!, $offset: Int!) {
   player(steamAccountId: $steamId) {
     matches(request: {
       take: 100,
+      offset: $offset,
       isStats: true
     }) {
       id
@@ -29,10 +35,28 @@ query getRecentMatches($steamId: Long!) {
 """
 
 def fetch_recent_matches(steam_id):
-    response = requests.post(
-        STRATZ_API_URL,
-        json={"query": QUERY, "variables": {"steamId": steam_id}},
-        headers=HEADERS
-    )
-    response.raise_for_status()
-    return response.json()
+    all_matches = []
+
+    for offset in [0, 100]:
+        response = requests.post(
+            STRATZ_API_URL,
+            json={
+                "query": BASE_QUERY,
+                "variables": {"steamId": steam_id, "offset": offset}
+            },
+            headers=HEADERS
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        matches = (
+            data.get("data", {})
+            .get("player", {})
+            .get("matches", [])
+        )
+
+        # Filter to unranked only
+        unranked = [m for m in matches if m.get("gameMode") in UNRANKED_MODES]
+        all_matches.extend(unranked)
+
+    return all_matches
